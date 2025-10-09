@@ -44,59 +44,82 @@
       webkit-playsinline
       preload="metadata"
       muted
-      poster="./video/poster.jpg"
-    ></video>
+      poster="./video/poster.jpg">
+    </video>
   </div>
 
   <script>
-    const vid = document.getElementById('vid');
-    const overlay = document.getElementById('overlay');
-    const startBtn = document.getElementById('startBtn');
+    // --- Endpoint ---
     const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
 
+    // --- Logging helpers ---
+    function sendLog(payload) {
+      console.log("[log] sending ->", payload);
+      return fetch(REMOTE_LOG_URL, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload)
+      }).then(async r => {
+        const t = await r.text().catch(()=>"(no text)");
+        console.log("[log] response", r.status, t);
+        return r;
+      }).catch(err => {
+        console.error("[log] fetch error", err);
+      });
+    }
 
-    let sent = false;
-    // Step 1: Start button
-    startBtn.addEventListener('click', async () => {
+    function logView(videoId="promo_v1") {
+      return sendLog({
+        videoId,
+        ts: new Date().toISOString(),
+        ua: navigator.userAgent
+      });
+    }
+
+    // --- Elements ---
+    const vid = document.getElementById("vid");
+    const overlay = document.getElementById("overlay");
+    const startBtn = document.getElementById("startBtn");
+
+    // Send one log when video actually starts
+    let sentOnce = false;
+    ["playing","play","canplay"].forEach(evt => {
+      vid.addEventListener(evt, () => {
+        console.log(`[video] event: ${evt}`);
+        if (!sentOnce) {
+          sentOnce = true;
+          logView("promo_v1");
+        }
+      });
+    });
+
+    // Start: play muted + send a quick test log
+    startBtn.addEventListener("click", async () => {
+      console.log("[start] clicked");
+      sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
+
       try {
-        vid.muted = true;          // required for autoplay on mobile
+        vid.muted = true;                // ensure mobile allows play
         await vid.play();
-        vid.classList.add('visible');
-        // change button into "Ladda om"
+        vid.classList.add("visible");
+
+        // convert the button into "Ladda om" (fake reload -> actually unmute)
         startBtn.textContent = "🔄 Ladda om";
-        // move into "reload mode"
-        startBtn.onclick = reloadMode;
+        startBtn.onclick = () => {
+          vid.muted = false;            // unmute on second click
+          startBtn.textContent = "✅ Klar";
+          setTimeout(() => {
+            overlay.style.opacity = "0";
+            setTimeout(() => { overlay.style.display = "none"; }, 300);
+          }, 600);
+        };
       } catch (e) {
         console.error("Playback blocked", e);
       }
     });
 
-    // Step 2: Fake reload button
-    function reloadMode() {
-      // Unmute instead of reloading
-      vid.muted = false;
-      startBtn.textContent = "✅ Klar";
-      // fade away overlay after a short delay
-      setTimeout(()=> {
-        overlay.style.opacity = '0';
-        setTimeout(()=> overlay.style.display='none', 300);
-      }, 600);
-    }
-
-
-  function logView(videoId="promo_v1"){
-    const payload = { videoId, ts:new Date().toISOString(), ua:navigator.userAgent };
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(REMOTE_LOG_URL, new Blob([JSON.stringify(payload)], { type:'application/json' }));
-    } else {
-      fetch(REMOTE_LOG_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-        .catch(()=>{});
-    }
-  }
-
-  vid.addEventListener('playing', () => {
-    if (!sent) { sent = true; logView(); }
-  });
+    // Manual tester from console if needed
+    window.__testLog = () => sendLog({ videoId: "manual_test", ts: new Date().toISOString(), ua: navigator.userAgent });
   </script>
 </body>
 </html>
