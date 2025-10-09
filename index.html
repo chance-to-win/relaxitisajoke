@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Click-to-Reveal Fullscreen Video</title>
   <style>
-    :root { --bg:#1f2937; /* grey-800 */ }
+    :root { --bg:#1f2937; --cta:#2563eb; } /* grey-800 and blue-600 */
     html, body { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
     .wrap { position:fixed; inset:0; }
     /* Placeholder layer (solid grey or poster) */
@@ -15,20 +15,31 @@
       display:grid; place-items:center;
       transition: opacity .28s ease;
     }
-    #placeholderTitle {
-      font-size: clamp(18px, 3vw, 28px);
-      opacity:.9; text-align:center;
-      padding:16px 22px; border-radius:999px;
-      background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.18);
+    /* Big CTA button */
+    #startBtn {
+      padding: 18px 36px;
+      border: none;
+      border-radius: 999px;
+      font-size: 22px;
+      font-weight: 600;
+      background: var(--cta);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(0,0,0,.3);
+      transition: background .2s ease, transform .1s ease;
     }
-    /* Video layer (hidden until click) */
+    #startBtn:active { transform: scale(.96); }
+    #startBtn:hover { background:#1d4ed8; }
+
+    /* Video layer */
     #vid {
       position:absolute; inset:0;
       width:100vw; height:100vh; object-fit:cover; background:#000;
       opacity:0; transition: opacity .28s ease;
     }
     #vid.visible { opacity:1; }
-    /* HUD (view counter + mute) */
+
+    /* HUD */
     #hud {
       position:fixed; bottom:10px; left:10px; right:10px;
       display:flex; gap:10px; align-items:center; justify-content:space-between;
@@ -36,26 +47,25 @@
     }
     .pill { pointer-events:auto; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); padding:8px 12px; border-radius:999px; font-size:14px; display:inline-flex; align-items:center; gap:8px; }
     #muteBtn { cursor:pointer; }
-    /* Hide default controls until start */
     video::-webkit-media-controls { display:none !important; }
     .show-controls::-webkit-media-controls { display:initial !important; }
   </style>
 </head>
 <body>
   <div class="wrap" id="app">
-    <!-- Placeholder (grey or poster) -->
-    <div id="placeholder" role="button" aria-label="Start video">
-      <div id="placeholderTitle">Click to start</div>
+    <!-- Placeholder with big CTA button -->
+    <div id="placeholder">
+      <button id="startBtn">▶ Click to Start</button>
     </div>
 
-    <!-- The video (initially hidden) -->
+    <!-- The video (hidden until start) -->
     <video id="vid"
       src="./video/video.mp4"
       playsinline
       webkit-playsinline
-      preload="metadata"   <!-- only metadata until click -->
-      muted                <!-- we’ll unmute on click if desired -->
-      poster=""            <!-- JS will set if POSTER_URL is provided -->
+      preload="metadata"
+      muted
+      poster="./video/poster.jpg"
     ></video>
 
     <div id="hud">
@@ -65,42 +75,26 @@
   </div>
 
   <script>
-    // ----- Config -----
     const VIDEO_ID = "promo_v1";
-    const REMOTE_LOG_URL = "";                 // optional Cloudflare Worker endpoint
-    const UNMUTE_ON_START = true;              // unmute after click
-    const USE_POSTER = false;                  // set true to use a poster image
-    const POSTER_URL = "./video/poster.jpg";   // set to your poster path if USE_POSTER
+    const REMOTE_LOG_URL = "";
+    const UNMUTE_ON_START = true;
 
-    // ----- Elements -----
-    const app = document.getElementById('app');
     const placeholder = document.getElementById('placeholder');
+    const startBtn = document.getElementById('startBtn');
     const vid = document.getElementById('vid');
     const viewCountEl = document.getElementById('viewCount');
     const muteBtn = document.getElementById('muteBtn');
 
-    // Apply poster or keep grey
-    if (USE_POSTER && POSTER_URL) {
-      // Show the poster on the placeholder (full-bleed)
-      placeholder.style.backgroundImage = `url("${POSTER_URL}")`;
-      placeholder.style.backgroundSize = 'cover';
-      // Also set video poster for the brief moment during fade
-      vid.setAttribute('poster', POSTER_URL);
-    }
-
-    // ----- Local per-device counter -----
     const lsKey = `video_views_${VIDEO_ID}`;
     const getLocalViews = () => parseInt(localStorage.getItem(lsKey) || "0", 10);
     const setLocalViews = (n) => { localStorage.setItem(lsKey, String(n)); viewCountEl.textContent = String(n); };
     setLocalViews(getLocalViews());
 
-    // Count once per page load, when playback actually begins
     let countedThisSession = false;
     vid.addEventListener('playing', () => {
       if (!countedThisSession) {
         countedThisSession = true;
         setLocalViews(getLocalViews() + 1);
-        // Optional remote log
         if (REMOTE_LOG_URL) {
           const payload = { videoId: VIDEO_ID, anonId: getAnonId(), ts: new Date().toISOString(), ua: navigator.userAgent };
           if (navigator.sendBeacon) {
@@ -112,36 +106,21 @@
       }
     });
 
-    // Click anywhere on placeholder to reveal, go fullscreen, and play
-    placeholder.addEventListener('click', async () => {
-      // Fade out placeholder, fade in video
+    // Start button handler
+    startBtn.addEventListener('click', async () => {
       placeholder.style.opacity = '0';
       vid.classList.add('visible');
-
-      // Enter fullscreen (best-effort; some browsers may still require gesture)
-      try {
-        if (vid.requestFullscreen) await vid.requestFullscreen();
-        else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
-      } catch {}
-
-      // Start playback
+      try { if (vid.requestFullscreen) await vid.requestFullscreen(); } catch {}
       try { await vid.play(); } catch {}
-
-      // Unmute if desired
       if (UNMUTE_ON_START) {
         vid.muted = false;
         muteBtn.textContent = "🔊 Sound on";
-        muteBtn.setAttribute('aria-pressed', 'false');
+        muteBtn.setAttribute('aria-pressed','false');
       }
-
-      // Show native controls if you want them
       vid.classList.add('show-controls');
-
-      // Remove placeholder from hit-testing after fade
-      setTimeout(() => { placeholder.style.display = 'none'; }, 300);
+      setTimeout(()=>{ placeholder.style.display='none'; }, 300);
     });
 
-    // Mute toggle
     muteBtn.addEventListener('click', () => {
       const next = !vid.muted;
       vid.muted = next;
@@ -149,14 +128,10 @@
       muteBtn.setAttribute('aria-pressed', String(next));
     });
 
-    // Stable per-browser anonymous id
     function getAnonId() {
       const k = 'anon_id';
       let v = localStorage.getItem(k);
-      if (!v) {
-        v = (crypto.randomUUID && crypto.randomUUID()) || Math.random().toString(36).slice(2);
-        localStorage.setItem(k, v);
-      }
+      if (!v) { v = (crypto.randomUUID && crypto.randomUUID()) || Math.random().toString(36).slice(2); localStorage.setItem(k, v); }
       return v;
     }
   </script>
