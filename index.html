@@ -15,9 +15,13 @@
       transition: opacity .28s ease;
     }
     .ctaBtn{
-      padding: 20px 44px; border:none; border-radius:999px;
-      font-size:22px; font-weight:600; background:var(--cta); color:#fff;
-      box-shadow:0 8px 20px rgba(0,0,0,.3); cursor:pointer;
+      padding: 20px 44px;
+      border:none;
+      border-radius:12px;              /* rectangle with rounded corners */
+      font-size:22px; font-weight:600;
+      background:var(--cta); color:#fff;
+      box-shadow:0 8px 20px rgba(0,0,0,.3);
+      cursor:pointer;
       transition: background .2s ease, transform .1s ease;
     }
     .ctaBtn:active{ transform: scale(.96); }
@@ -58,24 +62,20 @@
   <div id="logStatus">Logs: 0</div>
 
   <script>
-    // ===== Config =====
     const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
-    const VIDEO_ID = "promo_v1"; // label for your clip (can be "video.mp4" if you prefer)
+    const VIDEO_ID = "promo_v1";
 
-    // ===== Elements =====
     const vid = document.getElementById("vid");
     const overlay = document.getElementById("overlay");
     const startBtn = document.getElementById("startBtn");
     const statusBox = document.getElementById("logStatus");
 
-    // ===== Visible counter =====
     let logCount = 0;
     function bumpBadge(label){
       logCount++;
       if (statusBox) statusBox.textContent = `Logs: ${logCount} (${label})`;
     }
 
-    // ===== Logging helpers =====
     function sendLog(payload) {
       console.log("[log] sending ->", payload);
       bumpBadge(payload.videoId || "n/a");
@@ -100,7 +100,6 @@
       });
     }
 
-    // ===== Wire up video events =====
     let sentOnce = false;
     ["playing","play","canplay"].forEach(evt => {
       vid.addEventListener(evt, () => {
@@ -112,20 +111,18 @@
       });
     });
 
-    // ===== Start flow =====
     startBtn.addEventListener("click", async () => {
       console.log("[start] clicked");
       sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
 
       try {
-        vid.muted = true;               // allow mobile autoplay
+        vid.muted = true;
         await vid.play();
         vid.classList.add("visible");
 
-        // Switch button to fake reload -> actually unmute and remove overlay
         startBtn.textContent = "🔄 Ladda om";
         startBtn.onclick = () => {
-          vid.muted = false;            // THIS is the unmute
+          vid.muted = false;
           startBtn.textContent = "✅ Klar";
           setTimeout(() => {
             overlay.style.opacity = "0";
@@ -137,7 +134,6 @@
       }
     });
 
-    // Optional: manual tester from console
     window.__testLog = () => sendLog({ videoId: "manual_test", ts: new Date().toISOString(), ua: navigator.userAgent });
   </script>
 </body>
