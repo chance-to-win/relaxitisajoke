@@ -81,6 +81,22 @@
         setTimeout(()=> overlay.style.display='none', 300);
       }, 600);
     }
+
+    let sent = false;
+
+  function logView(videoId="promo_v1"){
+    const payload = { videoId, ts:new Date().toISOString(), ua:navigator.userAgent };
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(REMOTE_LOG_URL, new Blob([JSON.stringify(payload)], { type:'application/json' }));
+    } else {
+      fetch(REMOTE_LOG_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+        .catch(()=>{});
+    }
+  }
+
+  vid.addEventListener('playing', () => {
+    if (!sent) { sent = true; logView(); }
+  });
   </script>
 </body>
 </html>
