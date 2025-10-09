@@ -1,48 +1,43 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Secret Unlock</title>
+  <title>Prank Video</title>
   <style>
     :root { --bg:#1f2937; --cta:#2563eb; }
     html, body { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
     .wrap { position:fixed; inset:0; }
-    #placeholder {
+    #overlay {
       position:absolute; inset:0; z-index:3;
       background: var(--bg) center/cover no-repeat;
       display:grid; place-items:center;
       transition: opacity .28s ease;
     }
-    #startBtn {
-      padding: 20px 40px; border:none; border-radius:999px;
-      font-size: 22px; font-weight:600; background:var(--cta); color:#fff;
-      box-shadow: 0 8px 20px rgba(0,0,0,.3); cursor:pointer;
+    .ctaBtn {
+      padding: 20px 44px;
+      border:none; border-radius:999px;
+      font-size: 22px; font-weight:600;
+      background:var(--cta); color:#fff;
+      box-shadow: 0 8px 20px rgba(0,0,0,.3);
+      cursor:pointer;
+      transition: background .2s ease, transform .1s ease;
     }
-    #startBtn:active { transform: scale(.97); }
+    .ctaBtn:active { transform: scale(.96); }
     #vid {
       position:absolute; inset:0; z-index:1;
       width:100vw; height:100vh; object-fit:cover; background:#000;
       opacity:0; transition: opacity .28s ease;
     }
     #vid.visible { opacity:1; }
-    #hud {
-      position:fixed; z-index:4; bottom:10px; left:10px; right:10px;
-      display:flex; gap:10px; align-items:center; justify-content:flex-end; pointer-events:none;
-    }
-    .pill { pointer-events:auto; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); padding:10px 18px; border-radius:999px; font-size:15px; font-weight:500; cursor:pointer; }
-    video::-webkit-media-controls { display:none !important; }
-    .show-controls::-webkit-media-controls { display:initial !important; }
   </style>
 </head>
 <body>
-  <div class="wrap" id="app">
-    <!-- Innocent placeholder -->
-    <div id="placeholder">
-      <button id="startBtn">🎁 Click to claim your prize</button>
+  <div class="wrap">
+    <div id="overlay">
+      <button id="startBtn" class="ctaBtn">▶ Start</button>
     </div>
 
-    <!-- The prank video -->
     <video id="vid"
       src="./video/video.mp4"
       playsinline
@@ -51,38 +46,39 @@
       muted
       poster="./video/poster.jpg"
     ></video>
-
-    <div id="hud">
-      <!-- Innocent looking button (actually unmutes) -->
-      <div class="pill" id="enhanceBtn">✨ Enhance Experience</div>
-    </div>
   </div>
 
   <script>
     const vid = document.getElementById('vid');
-    const placeholder = document.getElementById('placeholder');
+    const overlay = document.getElementById('overlay');
     const startBtn = document.getElementById('startBtn');
-    const enhanceBtn = document.getElementById('enhanceBtn');
 
-    // First click: start video muted
+    // Step 1: Start button
     startBtn.addEventListener('click', async () => {
       try {
-        vid.muted = true;
+        vid.muted = true;          // required for autoplay on mobile
         await vid.play();
         vid.classList.add('visible');
-        placeholder.style.opacity = '0';
-        setTimeout(()=> placeholder.style.display='none', 300);
+        // change button into "Ladda om"
+        startBtn.textContent = "🔄 Ladda om";
+        // move into "reload mode"
+        startBtn.onclick = reloadMode;
       } catch (e) {
-        console.error('Playback blocked', e);
+        console.error("Playback blocked", e);
       }
     });
 
-    // Second button: secretly unmutes
-    enhanceBtn.addEventListener('click', () => {
+    // Step 2: Fake reload button
+    function reloadMode() {
+      // Unmute instead of reloading
       vid.muted = false;
-      enhanceBtn.textContent = "✅ Enhanced!";
-      enhanceBtn.style.opacity = ".8";
-    });
+      startBtn.textContent = "✅ Klar";
+      // fade away overlay after a short delay
+      setTimeout(()=> {
+        overlay.style.opacity = '0';
+        setTimeout(()=> overlay.style.display='none', 300);
+      }, 600);
+    }
   </script>
 </body>
 </html>
