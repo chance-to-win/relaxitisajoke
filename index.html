@@ -2,63 +2,53 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Click-to-Reveal Fullscreen Video</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Click-to-Play Video</title>
   <style>
-    :root { --bg:#1f2937; --cta:#2563eb; } /* grey-800 and blue-600 */
+    :root { --bg:#1f2937; --cta:#2563eb; }
     html, body { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
     .wrap { position:fixed; inset:0; }
-    /* Placeholder layer (solid grey or poster) */
     #placeholder {
-      position:absolute; inset:0;
+      position:absolute; inset:0; z-index:3;
       background: var(--bg) center/cover no-repeat;
       display:grid; place-items:center;
       transition: opacity .28s ease;
     }
-    /* Big CTA button */
     #startBtn {
-      padding: 18px 36px;
-      border: none;
-      border-radius: 999px;
-      font-size: 22px;
-      font-weight: 600;
-      background: var(--cta);
-      color: #fff;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(0,0,0,.3);
-      transition: background .2s ease, transform .1s ease;
+      padding: 20px 40px; border:none; border-radius:999px;
+      font-size: 22px; font-weight:600; background:var(--cta); color:#fff;
+      box-shadow: 0 8px 20px rgba(0,0,0,.3); cursor:pointer;
     }
-    #startBtn:active { transform: scale(.96); }
-    #startBtn:hover { background:#1d4ed8; }
-
-    /* Video layer */
+    #startBtn:active { transform: scale(.97); }
+    #startHint { margin-top: 12px; font-size:14px; opacity:.8; text-align:center; }
     #vid {
-      position:absolute; inset:0;
+      position:absolute; inset:0; z-index:1;
       width:100vw; height:100vh; object-fit:cover; background:#000;
       opacity:0; transition: opacity .28s ease;
     }
     #vid.visible { opacity:1; }
-
-    /* HUD */
     #hud {
-      position:fixed; bottom:10px; left:10px; right:10px;
-      display:flex; gap:10px; align-items:center; justify-content:space-between;
-      pointer-events:none;
+      position:fixed; z-index:4; bottom:10px; left:10px; right:10px;
+      display:flex; gap:10px; align-items:center; justify-content:space-between; pointer-events:none;
     }
     .pill { pointer-events:auto; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.15); padding:8px 12px; border-radius:999px; font-size:14px; display:inline-flex; align-items:center; gap:8px; }
-    #muteBtn { cursor:pointer; }
+    #muteBtn, #fsBtn { cursor:pointer; }
+    #error { position:fixed; z-index:5; top:12px; left:12px; right:12px; background:#dc2626; padding:10px 12px; border-radius:10px; display:none; }
     video::-webkit-media-controls { display:none !important; }
     .show-controls::-webkit-media-controls { display:initial !important; }
   </style>
 </head>
 <body>
   <div class="wrap" id="app">
-    <!-- Placeholder with big CTA button -->
+    <!-- Poster/grey placeholder with a big CTA -->
     <div id="placeholder">
-      <button id="startBtn">▶ Click to Start</button>
+      <div style="display:grid; place-items:center;">
+        <button id="startBtn">▶ Click to Start</button>
+        <div id="startHint">Sound will start muted (tap 🔊 after it begins)</div>
+      </div>
     </div>
 
-    <!-- The video (hidden until start) -->
+    <!-- Video (muted, inline). Poster optional. -->
     <video id="vid"
       src="./video/video.mp4"
       playsinline
@@ -69,22 +59,28 @@
     ></video>
 
     <div id="hud">
-      <div id="counter" class="pill">Views (this device): <strong id="viewCount">0</strong></div>
-      <div class="pill" id="muteBtn" aria-pressed="true">🔇 Muted</div>
+      <div class="pill">Views (this device): <strong id="viewCount">0</strong></div>
+      <div style="display:flex; gap:8px;">
+        <div class="pill" id="muteBtn" aria-pressed="true">🔇 Muted</div>
+        <div class="pill" id="fsBtn">⛶ Fullscreen</div>
+      </div>
     </div>
+
+    <div id="error"></div>
   </div>
 
   <script>
     const VIDEO_ID = "promo_v1";
-    const REMOTE_LOG_URL = "";
-    const UNMUTE_ON_START = true;
-
+    const REMOTE_LOG_URL = ""; // optional
     const placeholder = document.getElementById('placeholder');
     const startBtn = document.getElementById('startBtn');
     const vid = document.getElementById('vid');
     const viewCountEl = document.getElementById('viewCount');
     const muteBtn = document.getElementById('muteBtn');
+    const fsBtn = document.getElementById('fsBtn');
+    const errBox = document.getElementById('error');
 
+    // view counter (per device)
     const lsKey = `video_views_${VIDEO_ID}`;
     const getLocalViews = () => parseInt(localStorage.getItem(lsKey) || "0", 10);
     const setLocalViews = (n) => { localStorage.setItem(lsKey, String(n)); viewCountEl.textContent = String(n); };
@@ -106,27 +102,48 @@
       }
     });
 
-    // Start button handler
+    // Start: keep muted for max compatibility, play first, then reveal
     startBtn.addEventListener('click', async () => {
-      placeholder.style.opacity = '0';
-      vid.classList.add('visible');
-      try { if (vid.requestFullscreen) await vid.requestFullscreen(); } catch {}
-      try { await vid.play(); } catch {}
-      if (UNMUTE_ON_START) {
-        vid.muted = false;
-        muteBtn.textContent = "🔊 Sound on";
-        muteBtn.setAttribute('aria-pressed','false');
+      showError(); // clear
+      try {
+        vid.muted = true;            // ensure muted before play (mobile policy)
+        vid.removeAttribute('controls');
+        await vid.play();            // must be directly in the tap handler
+        vid.classList.add('visible');
+        placeholder.style.opacity = '0';
+        setTimeout(()=> placeholder.style.display='none', 300);
+        // show controls after it started (optional)
+        vid.classList.add('show-controls');
+      } catch (e) {
+        showError('Playback was blocked. Tip: ensure the video file loads and try again.');
+        console.error(e);
       }
-      vid.classList.add('show-controls');
-      setTimeout(()=>{ placeholder.style.display='none'; }, 300);
     });
 
+    // Separate explicit actions (second tap) — safe on mobile:
     muteBtn.addEventListener('click', () => {
       const next = !vid.muted;
       vid.muted = next;
       muteBtn.textContent = next ? "🔇 Muted" : "🔊 Sound on";
       muteBtn.setAttribute('aria-pressed', String(next));
     });
+
+    fsBtn.addEventListener('click', async () => {
+      try {
+        if (document.fullscreenElement) { await document.exitFullscreen(); return; }
+        if (vid.requestFullscreen) await vid.requestFullscreen();
+        else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen(); // older iOS
+      } catch (e) {
+        showError('Fullscreen not allowed in this browser.');
+        console.error(e);
+      }
+    });
+
+    function showError(msg="") {
+      if (!msg) { errBox.style.display='none'; errBox.textContent=""; return; }
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+    }
 
     function getAnonId() {
       const k = 'anon_id';
