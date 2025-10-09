@@ -1,1 +1,153 @@
-<div>Hi world!</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Auto-Play Fullscreen Video</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%; background: #000; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .wrap {
+      position: fixed; inset: 0; display: grid; place-items: center; background:#000;
+    }
+    video {
+      width: 100vw; height: 100vh; object-fit: cover; background: #000;
+    }
+    /* Big start overlay to trigger fullscreen (required by browsers) */
+    #startOverlay {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      background: rgba(0,0,0,.35); backdrop-filter: blur(2px);
+      transition: opacity .25s ease;
+    }
+    #startBtn {
+      padding: 14px 22px; border: 0; border-radius: 999px; font-size: 18px;
+      background: #1f6feb; color: #fff; cursor: pointer; box-shadow: 0 10px 24px rgba(0,0,0,.25);
+    }
+    #hud {
+      position: fixed; bottom: 10px; left: 10px; right: 10px; display: flex; gap: 10px; align-items: center; justify-content: space-between; pointer-events: none;
+    }
+    .pill {
+      pointer-events: auto;
+      background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15);
+      padding: 8px 12px; border-radius: 999px; font-size: 14px; display: inline-flex; align-items: center; gap: 8px;
+    }
+    #muteBtn { cursor: pointer; }
+    #counter { opacity: .9; }
+    /* Hide default controls until user starts */
+    video::-webkit-media-controls { display:none !important; }
+    .show-controls::-webkit-media-controls { display: initial !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <video id="vid"
+      src="video.mp4"
+      playsinline
+      webkit-playsinline
+      muted
+      autoplay
+      preload="auto"
+    ></video>
+
+    <div id="startOverlay">
+      <button id="startBtn">Start & Go Fullscreen</button>
+    </div>
+
+    <div id="hud">
+      <div id="counter" class="pill">Views (this device): <strong id="viewCount">0</strong></div>
+      <div class="pill" id="muteBtn" aria-pressed="true">🔇 Muted</div>
+    </div>
+  </div>
+
+  <script>
+    // --- Config ---
+    const VIDEO_ID = "promo_v1"; // change if you swap video to keep counters separate
+    const REMOTE_LOG_URL = "";   // optional: set to your Cloudflare Worker URL to log server-side
+    const UNMUTE_ON_START = true; // set false if you want to remain muted after fullscreen
+
+    const vid = document.getElementById('vid');
+    const startOverlay = document.getElementById('startOverlay');
+    const startBtn = document.getElementById('startBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const viewCountEl = document.getElementById('viewCount');
+
+    // --- Local per-device counter (localStorage) ---
+    const lsKey = `video_views_${VIDEO_ID}`;
+    function getLocalViews() { return parseInt(localStorage.getItem(lsKey) || "0", 10); }
+    function setLocalViews(n) { localStorage.setItem(lsKey, String(n)); viewCountEl.textContent = String(n); }
+    setLocalViews(getLocalViews());
+
+    // Count a view the first time the video actually starts playing (per page load)
+    let countedThisSession = false;
+    vid.addEventListener('playing', () => {
+      if (!countedThisSession) {
+        countedThisSession = true;
+        const newTotal = getLocalViews() + 1;
+        setLocalViews(newTotal);
+        // Optionally log to your serverless endpoint (Cloudflare Worker)
+        if (REMOTE_LOG_URL) {
+          const payload = {
+            videoId: VIDEO_ID,
+            anonId: getAnonId(),
+            ts: new Date().toISOString(),
+            ua: navigator.userAgent
+          };
+          navigator.sendBeacon
+            ? navigator.sendBeacon(REMOTE_LOG_URL, new Blob([JSON.stringify(payload)], {type:'application/json'}))
+            : fetch(REMOTE_LOG_URL, {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+        }
+      }
+    });
+
+    // Attempt immediate autoplay (muted) as soon as possible
+    // Many browsers allow autoplay when muted
+    (async () => {
+      try {
+        await vid.play();
+      } catch { /* ignore; user gesture will start it */ }
+    })();
+
+    // Fullscreen & unmute on explicit user gesture (required by browsers)
+    startBtn.addEventListener('click', async () => {
+      try {
+        // Enter fullscreen
+        if (vid.requestFullscreen) await vid.requestFullscreen();
+        else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen(); // older iOS
+      } catch { /* some environments may refuse, continue anyway */ }
+
+      // Start playback + set audio preference
+      try { await vid.play(); } catch {}
+      if (UNMUTE_ON_START) {
+        vid.muted = false;
+        muteBtn.textContent = "🔊 Sound on";
+        muteBtn.setAttribute('aria-pressed', 'false');
+      }
+
+      // Show native controls now (optional)
+      vid.classList.add('show-controls');
+      startOverlay.style.opacity = '0';
+      setTimeout(() => { startOverlay.style.display = 'none'; }, 250);
+    });
+
+    // Mute toggle
+    muteBtn.addEventListener('click', () => {
+      const next = !vid.muted;
+      vid.muted = next;
+      muteBtn.textContent = next ? "🔇 Muted" : "🔊 Sound on";
+      muteBtn.setAttribute('aria-pressed', String(next));
+    });
+
+    // Anonymous device id (stable per-browser)
+    function getAnonId() {
+      const k = 'anon_id';
+      let v = localStorage.getItem(k);
+      if (!v) {
+        v = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+        localStorage.setItem(k, v);
+      }
+      return v;
+    }
+  </script>
+</body>
+</html>
