@@ -55,6 +55,7 @@
     const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
 
 
+    let sent = false;
     // Step 1: Start button
     startBtn.addEventListener('click', async () => {
       try {
@@ -82,7 +83,6 @@
       }, 600);
     }
 
-    let sent = false;
 
   function logView(videoId="promo_v1"){
     const payload = { videoId, ts:new Date().toISOString(), ua:navigator.userAgent };
