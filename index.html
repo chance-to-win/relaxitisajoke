@@ -8,36 +8,42 @@
     :root { --bg:#1f2937; --cta:#2563eb; }
     html, body { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
     .wrap { position:fixed; inset:0; }
-    #overlay {
+    #overlay{
       position:absolute; inset:0; z-index:3;
       background: var(--bg) center/cover no-repeat;
       display:grid; place-items:center;
       transition: opacity .28s ease;
     }
-    .ctaBtn {
-      padding: 20px 44px;
-      border:none; border-radius:999px;
-      font-size: 22px; font-weight:600;
-      background:var(--cta); color:#fff;
-      box-shadow: 0 8px 20px rgba(0,0,0,.3);
-      cursor:pointer;
+    .ctaBtn{
+      padding: 20px 44px; border:none; border-radius:999px;
+      font-size:22px; font-weight:600; background:var(--cta); color:#fff;
+      box-shadow:0 8px 20px rgba(0,0,0,.3); cursor:pointer;
       transition: background .2s ease, transform .1s ease;
     }
-    .ctaBtn:active { transform: scale(.96); }
-    #vid {
+    .ctaBtn:active{ transform: scale(.96); }
+    #vid{
       position:absolute; inset:0; z-index:1;
       width:100vw; height:100vh; object-fit:cover; background:#000;
       opacity:0; transition: opacity .28s ease;
     }
-    #vid.visible { opacity:1; }
+    #vid.visible{ opacity:1; }
+
+    /* Visible log counter */
+    #logStatus{
+      position:fixed; bottom:10px; left:10px; z-index:9999;
+      background:rgba(0,0,0,.65); color:#0f0; font-family:monospace;
+      font-size:13px; padding:6px 10px; border-radius:6px; user-select:none;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
+    <!-- Overlay with Start button -->
     <div id="overlay">
       <button id="startBtn" class="ctaBtn">▶ Start</button>
     </div>
 
+    <!-- Video -->
     <video id="vid"
       src="./video/video.mp4"
       playsinline
@@ -48,13 +54,31 @@
     </video>
   </div>
 
-  <script>
-    // --- Endpoint ---
-    const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
+  <!-- Visible log badge -->
+  <div id="logStatus">Logs: 0</div>
 
-    // --- Logging helpers ---
+  <script>
+    // ===== Config =====
+    const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
+    const VIDEO_ID = "promo_v1"; // label for your clip (can be "video.mp4" if you prefer)
+
+    // ===== Elements =====
+    const vid = document.getElementById("vid");
+    const overlay = document.getElementById("overlay");
+    const startBtn = document.getElementById("startBtn");
+    const statusBox = document.getElementById("logStatus");
+
+    // ===== Visible counter =====
+    let logCount = 0;
+    function bumpBadge(label){
+      logCount++;
+      if (statusBox) statusBox.textContent = `Logs: ${logCount} (${label})`;
+    }
+
+    // ===== Logging helpers =====
     function sendLog(payload) {
       console.log("[log] sending ->", payload);
+      bumpBadge(payload.videoId || "n/a");
       return fetch(REMOTE_LOG_URL, {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -68,7 +92,7 @@
       });
     }
 
-    function logView(videoId="promo_v1") {
+    function logView(videoId = VIDEO_ID) {
       return sendLog({
         videoId,
         ts: new Date().toISOString(),
@@ -76,37 +100,32 @@
       });
     }
 
-    // --- Elements ---
-    const vid = document.getElementById("vid");
-    const overlay = document.getElementById("overlay");
-    const startBtn = document.getElementById("startBtn");
-
-    // Send one log when video actually starts
+    // ===== Wire up video events =====
     let sentOnce = false;
     ["playing","play","canplay"].forEach(evt => {
       vid.addEventListener(evt, () => {
         console.log(`[video] event: ${evt}`);
         if (!sentOnce) {
           sentOnce = true;
-          logView("promo_v1");
+          logView(VIDEO_ID);
         }
       });
     });
 
-    // Start: play muted + send a quick test log
+    // ===== Start flow =====
     startBtn.addEventListener("click", async () => {
       console.log("[start] clicked");
       sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
 
       try {
-        vid.muted = true;                // ensure mobile allows play
+        vid.muted = true;               // allow mobile autoplay
         await vid.play();
         vid.classList.add("visible");
 
-        // convert the button into "Ladda om" (fake reload -> actually unmute)
+        // Switch button to fake reload -> actually unmute and remove overlay
         startBtn.textContent = "🔄 Ladda om";
         startBtn.onclick = () => {
-          vid.muted = false;            // unmute on second click
+          vid.muted = false;            // THIS is the unmute
           startBtn.textContent = "✅ Klar";
           setTimeout(() => {
             overlay.style.opacity = "0";
@@ -118,7 +137,7 @@
       }
     });
 
-    // Manual tester from console if needed
+    // Optional: manual tester from console
     window.__testLog = () => sendLog({ videoId: "manual_test", ts: new Date().toISOString(), ua: navigator.userAgent });
   </script>
 </body>
