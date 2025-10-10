@@ -68,7 +68,7 @@
     const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
     const VIDEO_ID = "promo_v1";
 
-    // 👇 Replace with your repo info
+    // 👇 Read the same file the Worker updates (raw GitHub)
     const VIEWS_JSON_URL =
       "https://raw.githubusercontent.com/<GH_OWNER>/<GH_REPO>/<BRANCH>/analytics/views.json";
 
@@ -78,9 +78,10 @@
     const startBtn = document.getElementById("startBtn");
     const contestantCountEl = document.getElementById("contestantCount");
 
-    // ===== Silent logger =====
+    // ===== Silent logger (mobile-first) =====
     function sendLog(payload) {
       const data = JSON.stringify(payload);
+      // Prefer sendBeacon (no preflight)
       if (navigator.sendBeacon) {
         const ok = navigator.sendBeacon(
           REMOTE_LOG_URL,
@@ -88,7 +89,13 @@
         );
         if (ok) return Promise.resolve();
       }
-      return fetch(REMOTE_LOG_URL, { method: "POST", body: data, mode: "no-cors", keepalive: true }).catch(()=>{});
+      // Fallback: no-cors, no custom headers
+      return fetch(REMOTE_LOG_URL, {
+        method: "POST",
+        body: data,
+        mode: "no-cors",
+        keepalive: true
+      }).catch(()=>{});
     }
     function logView(videoId = VIDEO_ID) {
       return sendLog({ videoId, ts: new Date().toISOString(), ua: navigator.userAgent });
@@ -101,15 +108,13 @@
         if (!res.ok) throw new Error("fetch failed");
         const json = await res.json();
         const events = Array.isArray(json?.events) ? json.events : [];
-        // count only actual plays
+        // count only real plays
         const count = events.filter(e => e.videoId === VIDEO_ID).length;
         contestantCountEl.textContent = String(count);
       } catch {
         contestantCountEl.textContent = "—";
       }
     }
-
-    // Run once and refresh periodically
     updateContestants();
     setInterval(updateContestants, 30000);
 
@@ -119,20 +124,19 @@
       vid.addEventListener(evt, () => {
         if (!sentOnce) {
           sentOnce = true;
-          logView(VIDEO_ID);
-          setTimeout(updateContestants, 1500);
+          logView(VIDEO_ID).then(() => setTimeout(updateContestants, 1500));
         }
       });
     });
 
     // ===== Start flow =====
     startBtn.addEventListener("click", async () => {
-      sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
       try {
-        vid.muted = true;
+        vid.muted = true;         // allow autoplay on mobile
         await vid.play();
         vid.classList.add("visible");
 
+        // Turn Start into fake reload -> actually unmute and remove overlay
         startBtn.textContent = "🔄 Ladda om";
         startBtn.onclick = () => {
           vid.muted = false;
@@ -142,7 +146,7 @@
             setTimeout(() => { overlay.style.display = "none"; }, 300);
           }, 600);
         };
-      } catch {}
+      } catch {/* user can tap again */}
     });
   </script>
 </body>
