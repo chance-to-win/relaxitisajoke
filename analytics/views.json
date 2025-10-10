@@ -114,6 +114,11 @@
       "videoId": "promo_v1",
       "ts": "2025-10-10T10:38:04.222Z",
       "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36"
+    },
+    {
+      "videoId": "promo_v1",
+      "ts": "2025-10-10T14:39:08.922Z",
+      "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1"
     }
   ]
 }
