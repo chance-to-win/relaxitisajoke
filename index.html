@@ -6,7 +6,11 @@
   <title>Prank Video</title>
   <style>
     :root { --bg:#1f2937; --cta:#2563eb; }
-    html, body { margin:0; padding:0; height:100%; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+    html, body {
+      margin:0; padding:0; height:100%;
+      background:#000; color:#fff;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    }
     .wrap { position:fixed; inset:0; }
     #overlay{
       position:absolute; inset:0; z-index:3;
@@ -17,7 +21,7 @@
     .ctaBtn{
       padding: 20px 44px;
       border:none;
-      border-radius:12px;               /* rectangle with rounded corners */
+      border-radius:12px;              /* rectangle with rounded corners */
       font-size:22px; font-weight:600;
       background:var(--cta); color:#fff;
       box-shadow:0 8px 20px rgba(0,0,0,.3);
@@ -65,12 +69,10 @@
 
   <script>
     // ===== Config =====
-    const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
+    const WORKER_BASE = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev";
+    const REMOTE_LOG_URL = WORKER_BASE + "/log";
+    const COUNT_URL = WORKER_BASE + "/count?videoId=promo_v1";
     const VIDEO_ID = "promo_v1";
-
-    // Optional: fill this with your raw GitHub URL (recommended for reliability)
-    // Example: "https://raw.githubusercontent.com/<owner>/<repo>/<branch>/analytics/views.json"
-    const RAW_GITHUB_VIEWS_JSON = ""; // leave empty to auto-detect relative paths
 
     // ===== Elements =====
     const vid = document.getElementById("vid");
@@ -81,6 +83,7 @@
     // ===== Silent logger (mobile-first) =====
     function sendLog(payload) {
       const data = JSON.stringify(payload);
+      // Prefer sendBeacon (no preflight)
       if (navigator.sendBeacon) {
         const ok = navigator.sendBeacon(
           REMOTE_LOG_URL,
@@ -88,6 +91,7 @@
         );
         if (ok) return Promise.resolve();
       }
+      // Fallback: no-cors fetch (no custom headers)
       return fetch(REMOTE_LOG_URL, {
         method: "POST",
         body: data,
@@ -95,51 +99,23 @@
         keepalive: true
       }).catch(()=>{});
     }
+
     function logView(videoId = VIDEO_ID) {
       return sendLog({ videoId, ts: new Date().toISOString(), ua: navigator.userAgent });
     }
 
-    // ===== Build candidate URLs for views.json =====
-    function candidateViewsUrls() {
-      const c = [];
-      const bust = `?t=${Date.now()}`;
-
-      if (RAW_GITHUB_VIEWS_JSON) c.push(RAW_GITHUB_VIEWS_JSON + bust);
-
-      // Path handling for GitHub Pages project sites (/username.github.io/repo/)
-      const { origin, pathname } = location;
-      const basePath = pathname.endsWith("/") ? pathname : pathname.replace(/\/[^/]*$/, "/");
-
-      // Try relative to current page
-      c.push(new URL("./analytics/views.json" + bust, origin + basePath).toString());
-
-      // Try at the site root (useful if index is at root)
-      c.push(origin + "/analytics/views.json" + bust);
-
-      return c;
-    }
-
-    // ===== Antal tävlande (robust loader) =====
+    // ===== Fast count from Worker (no GitHub cache delay) =====
     async function updateContestants() {
-      const urls = candidateViewsUrls();
-      for (const u of urls) {
-        try {
-          const res = await fetch(u, { cache: "no-store" });
-          if (!res.ok) continue;
-          const json = await res.json();
-          const events = Array.isArray(json?.events) ? json.events : [];
-          const count = events.filter(e => e.videoId === VIDEO_ID).length;
-          contestantCountEl.textContent = String(count);
-          return;
-        } catch {
-          // try next candidate
-        }
+      try {
+        const res = await fetch(COUNT_URL + "&t=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error();
+        const text = (await res.text()).trim();
+        const n = /^\d+$/.test(text) ? text : "0";
+        contestantCountEl.textContent = n;
+      } catch {
+        contestantCountEl.textContent = "0";
       }
-      // If all attempts fail, show 0 (cleaner than en-dash)
-      contestantCountEl.textContent = "0";
     }
-
-    // Run once and refresh periodically
     updateContestants();
     setInterval(updateContestants, 30000);
 
@@ -149,7 +125,7 @@
       vid.addEventListener(evt, () => {
         if (!sentOnce) {
           sentOnce = true;
-          logView(VIDEO_ID).then(() => setTimeout(updateContestants, 1500));
+          logView(VIDEO_ID).then(() => setTimeout(updateContestants, 800));
         }
       });
     });
