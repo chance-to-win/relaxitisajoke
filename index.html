@@ -67,8 +67,10 @@
     // ===== Config =====
     const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
     const VIDEO_ID = "promo_v1";
-    // If your Pages site and repo are the same branch, this relative path works:
-    const VIEWS_JSON_URL = "/analytics/views.json";
+
+    // 👇 Replace with your repo info
+    const VIEWS_JSON_URL =
+      "https://raw.githubusercontent.com/<GH_OWNER>/<GH_REPO>/<BRANCH>/analytics/views.json";
 
     // ===== Elements =====
     const vid = document.getElementById("vid");
@@ -76,10 +78,9 @@
     const startBtn = document.getElementById("startBtn");
     const contestantCountEl = document.getElementById("contestantCount");
 
-    // ===== Silent logger (mobile-first) =====
+    // ===== Silent logger =====
     function sendLog(payload) {
       const data = JSON.stringify(payload);
-      // 1) Prefer sendBeacon (no preflight)
       if (navigator.sendBeacon) {
         const ok = navigator.sendBeacon(
           REMOTE_LOG_URL,
@@ -87,50 +88,38 @@
         );
         if (ok) return Promise.resolve();
       }
-      // 2) Fallback: no-cors fetch (no custom headers)
-      return fetch(REMOTE_LOG_URL, {
-        method: "POST",
-        body: data,
-        mode: "no-cors",
-        keepalive: true
-      }).catch(()=>{});
+      return fetch(REMOTE_LOG_URL, { method: "POST", body: data, mode: "no-cors", keepalive: true }).catch(()=>{});
     }
-
     function logView(videoId = VIDEO_ID) {
-      return sendLog({
-        videoId,
-        ts: new Date().toISOString(),
-        ua: navigator.userAgent
-      });
+      return sendLog({ videoId, ts: new Date().toISOString(), ua: navigator.userAgent });
     }
 
-    // ===== Update "Antal tävlande" from views.json =====
+    // ===== Antal tävlande =====
     async function updateContestants() {
       try {
-        // cache-bust to avoid CDN stale reads
         const res = await fetch(`${VIEWS_JSON_URL}?t=${Date.now()}`, { cache: "no-store" });
-        if (!res.ok) throw new Error("views.json fetch failed");
+        if (!res.ok) throw new Error("fetch failed");
         const json = await res.json();
-        const n = Array.isArray(json?.events) ? json.events.length : 0;
-        contestantCountEl.textContent = n;
+        const events = Array.isArray(json?.events) ? json.events : [];
+        // count only actual plays
+        const count = events.filter(e => e.videoId === VIDEO_ID).length;
+        contestantCountEl.textContent = String(count);
       } catch {
-        // if fetch fails (e.g., different repo/branch), don’t show a scary error
         contestantCountEl.textContent = "—";
       }
     }
 
-    // Refresh contestants on load and every 30s (optional)
+    // Run once and refresh periodically
     updateContestants();
     setInterval(updateContestants, 30000);
 
-    // ===== Wire up video events (debounced) =====
+    // ===== Video wiring =====
     let sentOnce = false;
     ["playing","play","canplay"].forEach(evt => {
       vid.addEventListener(evt, () => {
         if (!sentOnce) {
           sentOnce = true;
           logView(VIDEO_ID);
-          // Small delay then refresh count so the new view appears quickly
           setTimeout(updateContestants, 1500);
         }
       });
@@ -138,15 +127,12 @@
 
     // ===== Start flow =====
     startBtn.addEventListener("click", async () => {
-      // optional: record the start click separately (not shown anywhere)
       sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
-
       try {
-        vid.muted = true;               // allow autoplay on mobile
+        vid.muted = true;
         await vid.play();
         vid.classList.add("visible");
 
-        // Turn Start into fake reload -> actually unmute and remove overlay
         startBtn.textContent = "🔄 Ladda om";
         startBtn.onclick = () => {
           vid.muted = false;
@@ -156,9 +142,7 @@
             setTimeout(() => { overlay.style.display = "none"; }, 300);
           }, 600);
         };
-      } catch {
-        // ignore; user can tap Start again
-      }
+      } catch {}
     });
   </script>
 </body>
