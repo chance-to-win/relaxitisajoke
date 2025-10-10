@@ -61,80 +61,95 @@
   <!-- Visible log badge -->
   <div id="logStatus">Logs: 0</div>
 
-  <script>
-    const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
-    const VIDEO_ID = "promo_v1";
+ <script>
+  // ===== Config =====
+  const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
+  const VIDEO_ID = "promo_v1";
 
-    const vid = document.getElementById("vid");
-    const overlay = document.getElementById("overlay");
-    const startBtn = document.getElementById("startBtn");
-    const statusBox = document.getElementById("logStatus");
+  // ===== Elements =====
+  const vid = document.getElementById("vid");
+  const overlay = document.getElementById("overlay");
+  const startBtn = document.getElementById("startBtn");
+  const statusBox = document.getElementById("logStatus");
 
-    let logCount = 0;
-    function bumpBadge(label){
-      logCount++;
-      if (statusBox) statusBox.textContent = `Logs: ${logCount} (${label})`;
+  // ===== Visible counter =====
+  let logCount = 0;
+  function bumpBadge(label){
+    logCount++;
+    if (statusBox) statusBox.textContent = `Logs: ${logCount} (${label || ""})`;
+  }
+
+  // ===== Robust logger (mobile-first) =====
+  function sendLog(payload) {
+    try { bumpBadge(payload.videoId || "n/a"); } catch {}
+    const data = JSON.stringify(payload);
+
+    // 1) Best: sendBeacon (no CORS, very reliable on mobile)
+    if (navigator.sendBeacon) {
+      const ok = navigator.sendBeacon(
+        REMOTE_LOG_URL,
+        new Blob([data], { type: "text/plain;charset=UTF-8" }) // avoid JSON preflight
+      );
+      if (ok) return Promise.resolve("beacon");
     }
 
-    function sendLog(payload) {
-      console.log("[log] sending ->", payload);
-      bumpBadge(payload.videoId || "n/a");
-      return fetch(REMOTE_LOG_URL, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(payload)
-      }).then(async r => {
-        const t = await r.text().catch(()=>"(no text)");
-        console.log("[log] response", r.status, t);
-        return r;
-      }).catch(err => {
-        console.error("[log] fetch error", err);
-      });
-    }
+    // 2) Fallback: fetch with no-cors and NO custom headers (no preflight)
+    return fetch(REMOTE_LOG_URL, {
+      method: "POST",
+      body: data,
+      mode: "no-cors",
+      keepalive: true
+    }).catch(()=>{ /* ignore */ });
+  }
 
-    function logView(videoId = VIDEO_ID) {
-      return sendLog({
-        videoId,
-        ts: new Date().toISOString(),
-        ua: navigator.userAgent
-      });
-    }
-
-    let sentOnce = false;
-    ["playing","play","canplay"].forEach(evt => {
-      vid.addEventListener(evt, () => {
-        console.log(`[video] event: ${evt}`);
-        if (!sentOnce) {
-          sentOnce = true;
-          logView(VIDEO_ID);
-        }
-      });
+  function logView(videoId = VIDEO_ID) {
+    return sendLog({
+      videoId,
+      ts: new Date().toISOString(),
+      ua: navigator.userAgent
     });
+  }
 
-    startBtn.addEventListener("click", async () => {
-      console.log("[start] clicked");
-      sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
-
-      try {
-        vid.muted = true;
-        await vid.play();
-        vid.classList.add("visible");
-
-        startBtn.textContent = "🔄 Ladda om";
-        startBtn.onclick = () => {
-          vid.muted = false;
-          startBtn.textContent = "✅ Klar";
-          setTimeout(() => {
-            overlay.style.opacity = "0";
-            setTimeout(() => { overlay.style.display = "none"; }, 300);
-          }, 600);
-        };
-      } catch (e) {
-        console.error("Playback blocked", e);
+  // ===== Wire up video events (debounced) =====
+  let sentOnce = false;
+  ["playing","play","canplay"].forEach(evt => {
+    vid.addEventListener(evt, () => {
+      if (!sentOnce) {
+        sentOnce = true;
+        logView(VIDEO_ID);
       }
     });
+  });
 
-    window.__testLog = () => sendLog({ videoId: "manual_test", ts: new Date().toISOString(), ua: navigator.userAgent });
-  </script>
+  // ===== Start flow =====
+  startBtn.addEventListener("click", async () => {
+    // immediate test log so you can see it in CF
+    sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
+
+    try {
+      vid.muted = true;               // allow autoplay on mobile
+      await vid.play();
+      vid.classList.add("visible");
+
+      // turn Start into fake reload that unmutes & hides overlay
+      startBtn.textContent = "🔄 Ladda om";
+      startBtn.onclick = () => {
+        vid.muted = false;
+        startBtn.textContent = "✅ Klar";
+        setTimeout(() => {
+          overlay.style.opacity = "0";
+          setTimeout(() => { overlay.style.display = "none"; }, 300);
+        }, 600);
+      };
+    } catch (e) {
+      // ignore; phone will still show Start to retry
+      console.error("Playback blocked", e);
+    }
+  });
+
+  // Optional: manual tester in console
+  window.__testLog = () => sendLog({ videoId: "manual_test", ts: new Date().toISOString(), ua: navigator.userAgent });
+</script>
+
 </body>
 </html>
