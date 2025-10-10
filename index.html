@@ -17,7 +17,7 @@
     .ctaBtn{
       padding: 20px 44px;
       border:none;
-      border-radius:12px;              /* rectangle with rounded corners */
+      border-radius:12px;               /* rectangle with rounded corners */
       font-size:22px; font-weight:600;
       background:var(--cta); color:#fff;
       box-shadow:0 8px 20px rgba(0,0,0,.3);
@@ -32,19 +32,21 @@
     }
     #vid.visible{ opacity:1; }
 
-    /* Visible log counter */
-    #logStatus{
-      position:fixed; bottom:10px; left:10px; z-index:9999;
-      background:rgba(0,0,0,.65); color:#0f0; font-family:monospace;
-      font-size:13px; padding:6px 10px; border-radius:6px; user-select:none;
+    /* Antal tävlande badge */
+    #contestants {
+      position:fixed; bottom:10px; left:10px; z-index:3;
+      background:rgba(0,0,0,.65); color:#fff;
+      font-size:14px; padding:8px 12px; border-radius:10px;
+      border:1px solid rgba(255,255,255,.15);
     }
+    #contestants strong { font-weight:700; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <!-- Overlay with Start button -->
     <div id="overlay">
-      <button id="startBtn" class="ctaBtn">▶ Starta</button>
+      <button id="startBtn" class="ctaBtn">▶ Start</button>
     </div>
 
     <!-- Video -->
@@ -58,98 +60,106 @@
     </video>
   </div>
 
-  <!-- Visible log badge -->
-  <div id="logStatus">Logs: 0</div>
+  <!-- Subtle public counter -->
+  <div id="contestants">Antal tävlande: <strong id="contestantCount">—</strong></div>
 
- <script>
-  // ===== Config =====
-  const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
-  const VIDEO_ID = "promo_v1";
+  <script>
+    // ===== Config =====
+    const REMOTE_LOG_URL = "https://blue-dawn-50e0.ignatius-b-dick.workers.dev/log";
+    const VIDEO_ID = "promo_v1";
+    // If your Pages site and repo are the same branch, this relative path works:
+    const VIEWS_JSON_URL = "/analytics/views.json";
 
-  // ===== Elements =====
-  const vid = document.getElementById("vid");
-  const overlay = document.getElementById("overlay");
-  const startBtn = document.getElementById("startBtn");
-  const statusBox = document.getElementById("logStatus");
+    // ===== Elements =====
+    const vid = document.getElementById("vid");
+    const overlay = document.getElementById("overlay");
+    const startBtn = document.getElementById("startBtn");
+    const contestantCountEl = document.getElementById("contestantCount");
 
-  // ===== Visible counter =====
-  let logCount = 0;
-  function bumpBadge(label){
-    logCount++;
-    if (statusBox) statusBox.textContent = `Logs: ${logCount} (${label || ""})`;
-  }
-
-  // ===== Robust logger (mobile-first) =====
-  function sendLog(payload) {
-    try { bumpBadge(payload.videoId || "n/a"); } catch {}
-    const data = JSON.stringify(payload);
-
-    // 1) Best: sendBeacon (no CORS, very reliable on mobile)
-    if (navigator.sendBeacon) {
-      const ok = navigator.sendBeacon(
-        REMOTE_LOG_URL,
-        new Blob([data], { type: "text/plain;charset=UTF-8" }) // avoid JSON preflight
-      );
-      if (ok) return Promise.resolve("beacon");
+    // ===== Silent logger (mobile-first) =====
+    function sendLog(payload) {
+      const data = JSON.stringify(payload);
+      // 1) Prefer sendBeacon (no preflight)
+      if (navigator.sendBeacon) {
+        const ok = navigator.sendBeacon(
+          REMOTE_LOG_URL,
+          new Blob([data], { type: "text/plain;charset=UTF-8" })
+        );
+        if (ok) return Promise.resolve();
+      }
+      // 2) Fallback: no-cors fetch (no custom headers)
+      return fetch(REMOTE_LOG_URL, {
+        method: "POST",
+        body: data,
+        mode: "no-cors",
+        keepalive: true
+      }).catch(()=>{});
     }
 
-    // 2) Fallback: fetch with no-cors and NO custom headers (no preflight)
-    return fetch(REMOTE_LOG_URL, {
-      method: "POST",
-      body: data,
-      mode: "no-cors",
-      keepalive: true
-    }).catch(()=>{ /* ignore */ });
-  }
+    function logView(videoId = VIDEO_ID) {
+      return sendLog({
+        videoId,
+        ts: new Date().toISOString(),
+        ua: navigator.userAgent
+      });
+    }
 
-  function logView(videoId = VIDEO_ID) {
-    return sendLog({
-      videoId,
-      ts: new Date().toISOString(),
-      ua: navigator.userAgent
+    // ===== Update "Antal tävlande" from views.json =====
+    async function updateContestants() {
+      try {
+        // cache-bust to avoid CDN stale reads
+        const res = await fetch(`${VIEWS_JSON_URL}?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("views.json fetch failed");
+        const json = await res.json();
+        const n = Array.isArray(json?.events) ? json.events.length : 0;
+        contestantCountEl.textContent = n;
+      } catch {
+        // if fetch fails (e.g., different repo/branch), don’t show a scary error
+        contestantCountEl.textContent = "—";
+      }
+    }
+
+    // Refresh contestants on load and every 30s (optional)
+    updateContestants();
+    setInterval(updateContestants, 30000);
+
+    // ===== Wire up video events (debounced) =====
+    let sentOnce = false;
+    ["playing","play","canplay"].forEach(evt => {
+      vid.addEventListener(evt, () => {
+        if (!sentOnce) {
+          sentOnce = true;
+          logView(VIDEO_ID);
+          // Small delay then refresh count so the new view appears quickly
+          setTimeout(updateContestants, 1500);
+        }
+      });
     });
-  }
 
-  // ===== Wire up video events (debounced) =====
-  let sentOnce = false;
-  ["playing","play","canplay"].forEach(evt => {
-    vid.addEventListener(evt, () => {
-      if (!sentOnce) {
-        sentOnce = true;
-        logView(VIDEO_ID);
+    // ===== Start flow =====
+    startBtn.addEventListener("click", async () => {
+      // optional: record the start click separately (not shown anywhere)
+      sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
+
+      try {
+        vid.muted = true;               // allow autoplay on mobile
+        await vid.play();
+        vid.classList.add("visible");
+
+        // Turn Start into fake reload -> actually unmute and remove overlay
+        startBtn.textContent = "🔄 Ladda om";
+        startBtn.onclick = () => {
+          vid.muted = false;
+          startBtn.textContent = "✅ Klar";
+          setTimeout(() => {
+            overlay.style.opacity = "0";
+            setTimeout(() => { overlay.style.display = "none"; }, 300);
+          }, 600);
+        };
+      } catch {
+        // ignore; user can tap Start again
       }
     });
-  });
-
-  // ===== Start flow =====
-  startBtn.addEventListener("click", async () => {
-    // immediate test log so you can see it in CF
-    sendLog({ videoId: "start_click", ts: new Date().toISOString(), ua: navigator.userAgent });
-
-    try {
-      vid.muted = true;               // allow autoplay on mobile
-      await vid.play();
-      vid.classList.add("visible");
-
-      // turn Start into fake reload that unmutes & hides overlay
-      startBtn.textContent = "🔄 Ladda om";
-      startBtn.onclick = () => {
-        vid.muted = false;
-        startBtn.textContent = "✅ Klar";
-        setTimeout(() => {
-          overlay.style.opacity = "0";
-          setTimeout(() => { overlay.style.display = "none"; }, 300);
-        }, 600);
-      };
-    } catch (e) {
-      // ignore; phone will still show Start to retry
-      console.error("Playback blocked", e);
-    }
-  });
-
-  // Optional: manual tester in console
-  window.__testLog = () => sendLog({ videoId: "manual_test", ts: new Date().toISOString(), ua: navigator.userAgent });
-</script>
-
+  </script>
 </body>
 </html>
