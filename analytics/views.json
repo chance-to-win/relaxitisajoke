@@ -129,6 +129,11 @@
       "videoId": "promo_v1",
       "ts": "2025-10-10T16:49:29.230Z",
       "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.7390.41 Mobile/15E148 Safari/604.1"
+    },
+    {
+      "videoId": "promo_v1",
+      "ts": "2025-10-11T19:14:50.628Z",
+      "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/132.0.2957.122 Version/18.0 Mobile/15E148 Safari/604.1"
     }
   ]
 }
